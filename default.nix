@@ -3,7 +3,6 @@ with (import <nixpkgs> {});
 mkShell {
   buildInputs = with pkgs; [
     python3Full
-    python312Packages.tkinter # pip installed tkinter causes issues with Nixos
     python3Packages.venvShellHook
   ];
   venvDir = "./.venv";

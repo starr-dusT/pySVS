@@ -4,19 +4,12 @@ import asyncio
 from binascii import crc_hqx, hexlify, unhexlify
 from bleak import BleakClient
 import getopt
-from PIL import ImageTk, Image
 import platform
 import requests
 import sys
 from threading import Thread
 import time
-import tkinter as tk
-from tkinter import ttk
 import traceback
-
-#EDIT THIS VALUE#####################
-SVS_MAC_ADDRESS = "01:23:45:67:89:AB"
-#####################################
 
 ###################    SB-1000-PRO CONFIG    ###################
 
@@ -125,10 +118,7 @@ def RX_thread(handle, data):
     decoded_frame = svs_decode(PARTIAL_FRAME)
     sync = decoded_frame["FRAME_RECOGNIZED"]
     if sync:
-        if GUI:
-            print("<- Received %s %s [%s]" % (decoded_frame["FRAME_TYPE"][1], str(decoded_frame["ATTRIBUTES"]), bytes2hexstr(PARTIAL_FRAME)))
-            refresh_widgets(decoded_frame["VALIDATED_VALUES"])
-        elif not(len(decoded_frame["VALIDATED_VALUES"]) == 1 and "STANDBY" in decoded_frame["ATTRIBUTES"]):
+        if not(len(decoded_frame["VALIDATED_VALUES"]) == 1 and "STANDBY" in decoded_frame["ATTRIBUTES"]):
             print(decoded_frame["VALIDATED_VALUES"])
 
 def start_bt_daemon():
@@ -142,27 +132,14 @@ def bleak_device():
 async def TX_thread(address, char_uuid):
     try:
         async with BleakClient(address,adapter=dev) as client:
-            if GUI:
-                print(f"Connected: {client.is_connected}")
-                print("Services:")
-                for service in client.services:
-                    print(str(service))
-                    for char in service.characteristics:
-                        print("\t%s" % (str(char)))
-                    print("")
+
             #subscribe to svs parameters characteristic
             await client.start_notify(char_uuid, RX_thread)
-
-            #ask subwoofer for config
-            if GUI:
-                TX.BUFFER = svs_encode("MEMREAD", "FULL_SETTINGS") + svs_encode("MEMREAD", "PRESET1NAME") + svs_encode("MEMREAD", "PRESET2NAME") + svs_encode("MEMREAD", "PRESET3NAME")
 
             while RUN_THREAD:
             #don't let this method die in order to RX continuously
                 for n in range(0,len(TX.BUFFER), 2):
                     await client.write_gatt_char(char_uuid, TX.BUFFER[0])
-                    if GUI:
-                        print("-> Sent %s [%s]" % (TX.BUFFER[1], bytes2hexstr(TX.BUFFER[0])))
                     del TX.BUFFER[0:2] #remove frame we just sent from buffer and its metadata
                     await asyncio.sleep(0.2)
                 await asyncio.sleep(0.2)
@@ -174,9 +151,6 @@ def close_bt_daemon():
     global RUN_THREAD
     RUN_THREAD = False
     TX.BUFFER = []
-    if GUI:
-        window.destroy()
-        print("Exiting...")
     while True: sys.exit(0)
 
 class TX:
@@ -378,234 +352,13 @@ def bytes2hexstr(bytes_input):
     
 ###################    End SVS Frame Routines    ###################
 
-###################    GUI Routines    ###################
-
-def autoon_combo_changed(self):
-    TX.BUFFER += svs_encode("MEMWRITE","STANDBY", autoon_values.index(autoon_combo.get()))
-
-def lpf_opt_changed():
-    refresh_widgets()
-    TX.BUFFER += svs_encode("MEMWRITE","LOW_PASS_FILTER_ENABLE", int(lpf_var.get()))
-
-def update_lpfilter_freq(self):
-    if lpf_var.get():
-    #as this callback is called when the click is released, be sure only to send svs memwrite only if lpf = on
-        TX.BUFFER += svs_encode("MEMWRITE","LOW_PASS_FILTER_FREQ", lpfilter_slider.get())
-
-def update_lpfilter_slope(self):
-    TX.BUFFER += svs_encode("MEMWRITE","LOW_PASS_FILTER_SLOPE", int(lpfilter_slope_combo.get().replace(" dB","")))
-
-def peq1_opt_changed():
-    refresh_widgets()
-    TX.BUFFER += svs_encode("MEMWRITE","PEQ1_ENABLE", int(PEQ1_var.get()))
-
-def peq2_opt_changed():
-    refresh_widgets()
-    TX.BUFFER += svs_encode("MEMWRITE","PEQ2_ENABLE", int(PEQ2_var.get()))
-
-def peq3_opt_changed():
-    refresh_widgets()
-    TX.BUFFER += svs_encode("MEMWRITE","PEQ3_ENABLE", int(PEQ3_var.get()))
-
-def update_peq1_freq(self):
-    if PEQ1_var.get():
-        TX.BUFFER += svs_encode("MEMWRITE","PEQ1_FREQ", PEQ1_freq_slider.get())
-
-def update_peq1_boost(self):
-    if PEQ1_var.get():
-        TX.BUFFER += svs_encode("MEMWRITE","PEQ1_BOOST", PEQ1_boost_slider.get())
-
-def update_peq1_qfactor(self):
-    if PEQ1_var.get():
-        TX.BUFFER += svs_encode("MEMWRITE","PEQ1_QFACTOR", PEQ1_qfactor_slider.get())
-
-def update_peq2_freq(self):
-    if PEQ2_var.get():
-        TX.BUFFER += svs_encode("MEMWRITE","PEQ2_FREQ", PEQ2_freq_slider.get())
-
-def update_peq2_boost(self):
-    if PEQ2_var.get():
-        TX.BUFFER += svs_encode("MEMWRITE","PEQ2_BOOST", PEQ2_boost_slider.get())
-
-def update_peq2_qfactor(self):
-    if PEQ2_var.get():
-        TX.BUFFER += svs_encode("MEMWRITE","PEQ2_QFACTOR", PEQ2_qfactor_slider.get())
-
-def update_peq3_freq(self):
-    if PEQ3_var.get():
-        TX.BUFFER += svs_encode("MEMWRITE","PEQ3_FREQ", PEQ3_freq_slider.get())
-
-def update_peq3_boost(self):
-    if PEQ3_var.get():
-        TX.BUFFER += svs_encode("MEMWRITE","PEQ3_BOOST", PEQ3_boost_slider.get())
-
-def update_peq3_qfactor(self):
-    if PEQ3_var.get():
-        TX.BUFFER += svs_encode("MEMWRITE","PEQ3_QFACTOR", PEQ3_qfactor_slider.get())
-
-def room_gain_opt_changed():
-    refresh_widgets()
-    TX.BUFFER += svs_encode("MEMWRITE","ROOM_GAIN_ENABLE", int(room_gain_var.get()))
-
-def update_room_gain_freq(event):
-    if room_gain_var.get():
-    #as this callback is called when the click is released, be sure only to send svs memwrite only if room_gain = on
-        current_index = SVS_PARAMS["ROOM_GAIN_FREQ"]["limits"].index(room_gain_slider.get())
-        if event.type == "5": #Button1Release
-            res = (max(SVS_PARAMS["ROOM_GAIN_FREQ"]["limits"]) - min(SVS_PARAMS["ROOM_GAIN_FREQ"]["limits"]))/room_gain_slider.cget("length")
-            click_release_value = min(SVS_PARAMS["ROOM_GAIN_FREQ"]["limits"]) + res * event.x
-            if abs(room_gain_slider.get() - click_release_value) > 3: # we were,'t dragging the slider but clicking the scale
-                next_index = min(current_index + 1, len(SVS_PARAMS["ROOM_GAIN_FREQ"]["limits"]) - 1) if click_release_value > room_gain_slider.get() else max(current_index - 1, 0)
-                room_gain_slider.set(SVS_PARAMS["ROOM_GAIN_FREQ"]["limits"][next_index])
-        elif event.keysym in ['Left', 'Right']: #KeyRelease
-            next_index = min(current_index + 1, len(SVS_PARAMS["ROOM_GAIN_FREQ"]["limits"]) - 1) if event.keysym == 'Right' else max(current_index - 1, 0)
-            room_gain_slider.set(SVS_PARAMS["ROOM_GAIN_FREQ"]["limits"][next_index])
-        TX.BUFFER += svs_encode("MEMWRITE","ROOM_GAIN_FREQ", room_gain_slider.get())
-
-def update_room_gain_slope(self):
-    TX.BUFFER += svs_encode("MEMWRITE","ROOM_GAIN_SLOPE", int(room_gain_slope_combo.get().replace(" dB","")))
-
-def make_room_gain_freq_discrete_slider(value):
-    new_value = min(SVS_PARAMS["ROOM_GAIN_FREQ"]["limits"], key=lambda x:abs(x-float(value)))
-    room_gain_slider.set(new_value)
-
-def update_vol(self):
-    TX.BUFFER += svs_encode("MEMWRITE","VOLUME", vol_slider.get())
-
-def update_phase(self):
-    TX.BUFFER += svs_encode("MEMWRITE","PHASE", phase_slider.get())
-
-def polarity_opt_changed():
-    refresh_widgets()
-    TX.BUFFER += svs_encode("MEMWRITE","POLARITY", int(polarity_var.get()))
-
-preset_combo_choice=3
-def preset_combo_changed(self):
-    global preset_combo_choice
-    preset_combo_choice=preset_values.index(preset_combo.get())
-
-def load_preset():
-    TX.BUFFER += svs_encode("PRESETLOADSAVE","PRESET" + str(preset_combo_choice + 1) + "LOAD")
-
-def save_preset():
-    global preset_combo_choice
-    if preset_combo_choice != 3:
-    #avoid saving default profile
-        TX.BUFFER += svs_encode("PRESETLOADSAVE","PRESET" + str(preset_combo_choice + 1) + "SAVE")
-
-def rename_preset():
-    global preset_combo_choice
-    if preset_combo_choice != 3:
-    #avoid renaming default profile
-        filtered_input = string_isalnumify(preset_combo.get())[:SVS_PARAMS["PRESET" + str(preset_combo_choice + 1) + "NAME"]["n_bytes"]]
-        if filtered_input not in preset_values and len(filtered_input) > 0:
-            preset_combo.set(filtered_input)
-            preset_values[preset_combo_choice] = filtered_input
-            preset_combo.configure(values=preset_values)
-            TX.BUFFER += svs_encode("MEMWRITE","PRESET" + str(preset_combo_choice + 1) + "NAME", filtered_input)
-        else:
-            preset_combo.set(preset_values[preset_combo_choice])
-    else:
-        preset_combo.set("DEFAULT")
-
-def refresh_widgets(values_dict={}):
-    for key in values_dict.keys():
-        if key == "STANDBY":
-            autoon_combo.current(int(values_dict[key]))
-        elif key == "LOW_PASS_FILTER_ENABLE":
-            lpf_var.set(bool(values_dict[key]))
-        elif key == "LOW_PASS_FILTER_FREQ":
-            lpfilter_slider.configure(state='normal')
-            lpfilter_slider.set(values_dict[key])
-        elif key == "LOW_PASS_FILTER_SLOPE":
-            lpfilter_slope_combo.current(SVS_PARAMS["LOW_PASS_FILTER_SLOPE"]["limits"].index(values_dict[key]))
-        elif key == "PEQ1_ENABLE":
-            PEQ1_var.set(bool(values_dict[key]))
-        elif key == "PEQ1_FREQ":
-            PEQ1_freq_slider.configure(state='normal')
-            PEQ1_freq_slider.set(values_dict[key])
-        elif key == "PEQ1_BOOST":
-            PEQ1_boost_slider.configure(state='normal')
-            PEQ1_boost_slider.set(values_dict[key])
-        elif key == "PEQ1_QFACTOR":
-            PEQ1_qfactor_slider.configure(state='normal')
-            PEQ1_qfactor_slider.set(values_dict[key])
-        elif key == "PEQ2_ENABLE":
-            PEQ2_var.set(bool(values_dict[key]))
-        elif key == "PEQ2_FREQ":
-            PEQ2_freq_slider.configure(state='normal')
-            PEQ2_freq_slider.set(values_dict[key])
-        elif key == "PEQ2_BOOST":
-            PEQ2_boost_slider.configure(state='normal')
-            PEQ2_boost_slider.set(values_dict[key])
-        elif key == "PEQ2_QFACTOR":
-            PEQ2_qfactor_slider.configure(state='normal')
-            PEQ2_qfactor_slider.set(values_dict[key])
-        elif key == "PEQ3_ENABLE":
-            PEQ3_var.set(bool(values_dict[key]))
-        elif key == "PEQ3_FREQ":
-            PEQ3_freq_slider.configure(state='normal')
-            PEQ3_freq_slider.set(values_dict[key])
-        elif key == "PEQ3_BOOST":
-            PEQ3_boost_slider.configure(state='normal')
-            PEQ3_boost_slider.set(values_dict[key])
-        elif key == "PEQ3_QFACTOR":
-            PEQ3_qfactor_slider.configure(state='normal')
-            PEQ3_qfactor_slider.set(values_dict[key])
-        elif key == "ROOM_GAIN_ENABLE":
-            room_gain_var.set(bool(values_dict[key]))
-        elif key == "ROOM_GAIN_FREQ":
-            room_gain_slider.configure(state='normal')
-            room_gain_slider.set(values_dict[key])
-        elif key == "ROOM_GAIN_SLOPE":
-            room_gain_slope_combo.current(SVS_PARAMS["ROOM_GAIN_SLOPE"]["limits"].index(values_dict[key]))
-        elif key == "VOLUME":
-            vol_slider.set(values_dict[key])
-        elif key == "PHASE":
-            phase_slider.set(values_dict[key])
-        elif key == "POLARITY":
-            polarity_var.set(bool(values_dict[key]))
-        elif "PRESET" in key and "NAME" in key:
-            preset_n = int(key.split("PRESET")[1].split("NAME")[0]) - 1
-            preset_values[preset_n] = values_dict[key]
-            preset_combo.configure(values=preset_values)
-
-    lpfilter_slider.configure(state=['disabled','normal'][int(lpf_var.get())], takefocus=int(lpf_var.get()))
-    lpfilter_slope_combo.configure(state=['disabled','readonly'][int(lpf_var.get())])
-    lpf_checkbox.configure(text='Low Pass Filter ' + ['OFF (LFE Active)','ON (LFE Inactive)'][int(lpf_var.get())])
-
-    PEQ1_freq_slider.configure(state=['disabled','normal'][int(PEQ1_var.get())], takefocus=int(PEQ1_var.get()))
-    PEQ1_boost_slider.configure(state=['disabled','normal'][int(PEQ1_var.get())], takefocus=int(PEQ1_var.get()))
-    PEQ1_qfactor_slider.configure(state=['disabled','normal'][int(PEQ1_var.get())], takefocus=int(PEQ1_var.get()))
-    PEQ1_checkbox.configure(text='PEQ1 ' + ['Disabled', 'Enabled'][int(PEQ1_var.get())])
-
-    PEQ2_freq_slider.configure(state=['disabled','normal'][int(PEQ2_var.get())], takefocus=int(PEQ2_var.get()))
-    PEQ2_boost_slider.configure(state=['disabled','normal'][int(PEQ2_var.get())], takefocus=int(PEQ2_var.get()))
-    PEQ2_qfactor_slider.configure(state=['disabled','normal'][int(PEQ2_var.get())], takefocus=int(PEQ2_var.get()))
-    PEQ2_checkbox.configure(text='PEQ2 ' + ['Disabled', 'Enabled'][int(PEQ2_var.get())])
-
-    PEQ3_freq_slider.configure(state=['disabled','normal'][int(PEQ3_var.get())], takefocus=int(PEQ3_var.get()))
-    PEQ3_boost_slider.configure(state=['disabled','normal'][int(PEQ3_var.get())], takefocus=int(PEQ3_var.get()))
-    PEQ3_qfactor_slider.configure(state=['disabled','normal'][int(PEQ3_var.get())], takefocus=int(PEQ3_var.get()))
-    PEQ3_checkbox.configure(text='PEQ3 ' + ['Disabled', 'Enabled'][int(PEQ3_var.get())])
-
-    room_gain_slider.configure(state=['disabled','normal'][int(room_gain_var.get())], takefocus=int(room_gain_var.get()))
-    room_gain_slope_combo.configure(state=['disabled','readonly'][int(room_gain_var.get())])
-    room_gain_checkbox.configure(text='Room Gain Compensation ' + ['OFF', 'ON'][int(room_gain_var.get())])
-
-    polarity_checkbox.configure(text='Polarity ' + ['(+)', '(-)'][int(polarity_var.get())])
-    return
-
-###################    End GUI Routines    ###################
-
 ###################    main()    ###################
 
 def show_usage():
     print('\npySVS ' + VERSION + '. Read and set SVS SB1000P Subwoofer values. By Logon84 http://github.com/logon84')
-    print('Run pySVS.py without arguments to launch the GUI')
-    print('USAGE: pySVS.py <-b device> <-m MAC_Address> <parameter1> <value1> <parameter2> <value2> etc...')
+    print('USAGE: pySVS.py <MAC_Address> <-b device> <parameter1> <value1> <parameter2> <value2> etc...')
+    print('Note: MAC address is required as first positional arguement.')
     print('\n-b dev or --btiface=dev: Specify a different BT interface to use (default is hci0).')
-    print('-m MAC or --mac=MAC: Sets a mac address different to the one set in pySVS.py file.')
     print('-h or --help: Show this help.')
     print('-v or --version: Show program version.')
     print('-e or --encode: Just print built frames based on param values.')
@@ -634,246 +387,114 @@ def string_isalnumify(in_string):
 def main():
     global dev
     dev="hci0"
-    global GUI
-    if len(sys.argv[1:]) > 0:
-        GUI = 0
-        built_frames = []
-        encode=0
-        try:
-            options, arguments = getopt.getopt(sys.argv[1:],"b:m:hved:is:l:q:r:o:f:k:p:",["btiface=","mac=","help","version","encode","decode=","info", "send=","lpf=","peq=","roomgain=","volume=", "phase=", "polarity=", "preset="])
-        except getopt.GetoptError as err:
-            show_usage()
-            print("ERROR: " + str(err) + "\n")
-            sys.exit(2)
-        for opt, opt_val in options:
-            if opt in ("-m", "--mac"):
-                    if len(opt_val.replace("-",":").split(":")) == 6 and len(opt_val) == 17: 
-                        SVS_MAC_ADDRESS = opt_val.replace("-",":")
-                    else:
-                        print("Incorrect MAC specified")
-                        sys.exit(1)
-            elif opt in ("-h", "--help"):
-                show_usage()
-                sys.exit(0)
-            elif opt in ("-v", "--version"):
-                print(VERSION)
-                sys.exit(0)
-            elif opt in ("-b", "--btiface"):
-                dev=opt_val
-            elif opt in ("-e", "--encode"):
-                encode=1
-            elif opt in ("-d", "--decode"):
-                print(svs_decode(unhexlify(opt_val.replace("0x",""))))
-                sys.exit(0)
-            elif opt in ("-i", "--info"):
-                built_frames += svs_encode("SUB_INFO1", "") + svs_encode("SUB_INFO2", "") + svs_encode("SUB_INFO3", "")
-            elif opt in ("-s", "--send"):
-                if opt_val == "help" or len(opt_val.split("@")) !=3:
-                    print("FRAME_TYPE@PARAMETER@DATA\n\nAvailable frame types: " + ", ".join(key for key in SVS_FRAME_TYPES.keys() if "RESP" not in key) + "\n\n" + "Available frame parameters: " + ", ".join(key for key in SVS_PARAMS.keys()) + "\n" )
-                    sys.exit(0)
-                data = opt_val.split("@",2)[2]
-                if len(data) > 0:
-                    data = string_isalnumify(data) if SVS_PARAMS[opt_val.split("@")[1].upper()]["limits_type"] == 2 else float(data)
-                    data = int(data) if type(SVS_PARAMS[opt_val.split("@")[1].upper()]["limits"][0]) == int else data
-                built_frames += svs_encode(opt_val.split("@")[0].upper(), opt_val.split("@")[1].upper(), data)
-            elif opt in ("-l", "--lpf"):
-                if len(opt_val.split("@")) == 3:
-                    sub_params = ["LOW_PASS_FILTER_ENABLE","LOW_PASS_FILTER_FREQ","LOW_PASS_FILTER_SLOPE"]
-                    for i in range(0,3):
-                        if len(opt_val.split("@")[i]) > 0:
-                            built_frames += svs_encode("MEMREAD", sub_params[i]) if opt_val.split("@")[i].upper() == 'A' else svs_encode("MEMWRITE", sub_params[i], int(float(opt_val.split("@")[i])))
-                else:
-                    print("ERROR: Values for LPF incorrect\nExamples of correct values: 1@@12, 0@50@12, A@@6")
-                    sys.exit(1)
-            elif opt in ("-q", "--peq"):
-                if len(opt_val.split("@")) == 5:
-                    peq_number = opt_val.split("@")[0]
-                    if int(peq_number) in range(1,4):
-                        sub_params = ["PEQ" + peq_number + "_ENABLE","PEQ" + peq_number + "_FREQ","PEQ" + peq_number + "_BOOST","PEQ" + peq_number + "_QFACTOR"]
-                        for i in range(1,5):
-                            if len(opt_val.split("@")[i]) > 0:
-                                built_frames += svs_encode("MEMREAD",sub_params[i-1]) if opt_val.split("@")[i].upper() == 'A' else svs_encode("MEMWRITE",sub_params[i-1],float(opt_val.split("@")[i]))
-                    else:
-                        print("ERROR: PEQ profile number incorrect")
-                        sys.exit(1)
-                else:
-                    print("ERROR: Values for PEQ incorrect\nExamples of correct values: 2@1@@@0.2, 3@0@40@-11.5@10, 1@A@@@")
-                    sys.exit(2)
-            elif opt in ("-r", "--roomgain"):
-                if len(opt_val.split("@")) == 3:
-                    sub_params = ["ROOM_GAIN_ENABLE","ROOM_GAIN_FREQ","ROOM_GAIN_SLOPE"]
-                    for i in range(0,3):
-                        if len(opt_val.split("@")[i]) > 0:
-                            built_frames += svs_encode("MEMREAD",sub_params[i]) if opt_val.split("@")[i].upper() == 'A' else svs_encode("MEMWRITE",sub_params[i],int(float(opt_val.split("@")[i])))
-                else:
-                    print("ERROR: Values for Roomgain incorrect\nExamples of correct values: 1@@12, 0@31@12, A@@6")
-                    sys.exit(1)
-            elif opt in ("-o", "--volume"):
-                built_frames += svs_encode("MEMREAD", "VOLUME") if opt_val.upper() == 'A' else svs_encode("MEMWRITE", "VOLUME", int(float(opt_val)))
-            elif opt in ("-f", "--phase"):
-                built_frames += svs_encode("MEMREAD", "PHASE") if opt_val.upper() == 'A' else svs_encode("MEMWRITE", "PHASE", int(float(opt_val)))
-            elif opt in ("-k", "--polarity"):
-                built_frames += svs_encode("MEMREAD", "POLARITY") if opt_val.upper() == 'A' else svs_encode("MEMWRITE", "POLARITY", int(float(opt_val)))
-            elif opt in ("-p", "--preset"):
-                if int(opt_val) in range (1,5): 
-                    built_frames += svs_encode("PRESETLOADSAVE","PRESET" + opt_val + "LOAD")
-                else:
-                    print("ERROR: Incorrect preset number specified")
-
-        try:
-            operands = [int(arg) for arg in arguments]
-        except ValueError:
-            show_usage()
-            sys.exit(2)
-            raise SystemExit()
-
-        if len(built_frames) > 0:
-            if encode:
-                for i in range(0,len(built_frames),2):
-                    print(bytes2hexstr(built_frames[i]))
-                sys.exit(0)
-            else:
-                start_bt_daemon()
-                TX.BUFFER=built_frames
-                while len(TX.BUFFER) > 0: pass
-                time.sleep(0.5)
-                close_bt_daemon()
-        else:
-            print("Nothing to do!")
-            sys.exit(0)
-
-    else:
+    built_frames = []
+    encode=0
+    try:
+        options, arguments = getopt.getopt(sys.argv[2:],"b:hved:is:l:q:r:o:f:k:p:",["btiface=","help","version","encode","decode=","info", "send=","lpf=","peq=","roomgain=","volume=", "phase=", "polarity=", "preset="])
+    except getopt.GetoptError as err:
         show_usage()
-        GUI = 1
-        try:
+        print("ERROR: " + str(err) + "\n")
+        sys.exit(2)
+
+    # mac address is required as first positional arguement
+    global SVS_MAC_ADDRESS
+    mac_in = sys.argv[1]
+    if len(mac_in.replace("-",":").split(":")) == 6 and len(mac_in) == 17: 
+        SVS_MAC_ADDRESS = mac_in.replace("-",":")
+    else:
+        print("Valid MAC address must be provided as first positional arguement")
+        sys.exit(1)
+
+    for opt, opt_val in options:
+        if opt in ("-h", "--help"):
+            show_usage()
+            sys.exit(0)
+        elif opt in ("-v", "--version"):
+            print(VERSION)
+            sys.exit(0)
+        elif opt in ("-b", "--btiface"):
+            dev=opt_val
+        elif opt in ("-e", "--encode"):
+            encode=1
+        elif opt in ("-d", "--decode"):
+            print(svs_decode(unhexlify(opt_val.replace("0x",""))))
+            sys.exit(0)
+        elif opt in ("-i", "--info"):
+            built_frames += svs_encode("SUB_INFO1", "") + svs_encode("SUB_INFO2", "") + svs_encode("SUB_INFO3", "")
+        elif opt in ("-s", "--send"):
+            if opt_val == "help" or len(opt_val.split("@")) !=3:
+                print("FRAME_TYPE@PARAMETER@DATA\n\nAvailable frame types: " + ", ".join(key for key in SVS_FRAME_TYPES.keys() if "RESP" not in key) + "\n\n" + "Available frame parameters: " + ", ".join(key for key in SVS_PARAMS.keys()) + "\n" )
+                sys.exit(0)
+            data = opt_val.split("@",2)[2]
+            if len(data) > 0:
+                data = string_isalnumify(data) if SVS_PARAMS[opt_val.split("@")[1].upper()]["limits_type"] == 2 else float(data)
+                data = int(data) if type(SVS_PARAMS[opt_val.split("@")[1].upper()]["limits"][0]) == int else data
+            built_frames += svs_encode(opt_val.split("@")[0].upper(), opt_val.split("@")[1].upper(), data)
+        elif opt in ("-l", "--lpf"):
+            if len(opt_val.split("@")) == 3:
+                sub_params = ["LOW_PASS_FILTER_ENABLE","LOW_PASS_FILTER_FREQ","LOW_PASS_FILTER_SLOPE"]
+                for i in range(0,3):
+                    if len(opt_val.split("@")[i]) > 0:
+                        built_frames += svs_encode("MEMREAD", sub_params[i]) if opt_val.split("@")[i].upper() == 'A' else svs_encode("MEMWRITE", sub_params[i], int(float(opt_val.split("@")[i])))
+            else:
+                print("ERROR: Values for LPF incorrect\nExamples of correct values: 1@@12, 0@50@12, A@@6")
+                sys.exit(1)
+        elif opt in ("-q", "--peq"):
+            if len(opt_val.split("@")) == 5:
+                peq_number = opt_val.split("@")[0]
+                if int(peq_number) in range(1,4):
+                    sub_params = ["PEQ" + peq_number + "_ENABLE","PEQ" + peq_number + "_FREQ","PEQ" + peq_number + "_BOOST","PEQ" + peq_number + "_QFACTOR"]
+                    for i in range(1,5):
+                        if len(opt_val.split("@")[i]) > 0:
+                            built_frames += svs_encode("MEMREAD",sub_params[i-1]) if opt_val.split("@")[i].upper() == 'A' else svs_encode("MEMWRITE",sub_params[i-1],float(opt_val.split("@")[i]))
+                else:
+                    print("ERROR: PEQ profile number incorrect")
+                    sys.exit(1)
+            else:
+                print("ERROR: Values for PEQ incorrect\nExamples of correct values: 2@1@@@0.2, 3@0@40@-11.5@10, 1@A@@@")
+                sys.exit(2)
+        elif opt in ("-r", "--roomgain"):
+            if len(opt_val.split("@")) == 3:
+                sub_params = ["ROOM_GAIN_ENABLE","ROOM_GAIN_FREQ","ROOM_GAIN_SLOPE"]
+                for i in range(0,3):
+                    if len(opt_val.split("@")[i]) > 0:
+                        built_frames += svs_encode("MEMREAD",sub_params[i]) if opt_val.split("@")[i].upper() == 'A' else svs_encode("MEMWRITE",sub_params[i],int(float(opt_val.split("@")[i])))
+            else:
+                print("ERROR: Values for Roomgain incorrect\nExamples of correct values: 1@@12, 0@31@12, A@@6")
+                sys.exit(1)
+        elif opt in ("-o", "--volume"):
+            built_frames += svs_encode("MEMREAD", "VOLUME") if opt_val.upper() == 'A' else svs_encode("MEMWRITE", "VOLUME", int(float(opt_val)))
+        elif opt in ("-f", "--phase"):
+            built_frames += svs_encode("MEMREAD", "PHASE") if opt_val.upper() == 'A' else svs_encode("MEMWRITE", "PHASE", int(float(opt_val)))
+        elif opt in ("-k", "--polarity"):
+            built_frames += svs_encode("MEMREAD", "POLARITY") if opt_val.upper() == 'A' else svs_encode("MEMWRITE", "POLARITY", int(float(opt_val)))
+        elif opt in ("-p", "--preset"):
+            if int(opt_val) in range (1,5): 
+                built_frames += svs_encode("PRESETLOADSAVE","PRESET" + opt_val + "LOAD")
+            else:
+                print("ERROR: Incorrect preset number specified")
+
+    try:
+        operands = [int(arg) for arg in arguments]
+    except ValueError:
+        show_usage()
+        sys.exit(2)
+        raise SystemExit()
+
+    if len(built_frames) > 0:
+        if encode:
+            for i in range(0,len(built_frames),2):
+                print(bytes2hexstr(built_frames[i]))
+            sys.exit(0)
+        else:
             start_bt_daemon()
-            global window
-            window = tk.Tk()
-            window.protocol("WM_DELETE_WINDOW", close_bt_daemon)
-            window.title("pySVS " + VERSION + " - SVS Subwoofer Control")
-            window.geometry('570x400')
-            window.resizable(False, False)
-            style= ttk.Style()
-            style.theme_use("clam")
-            style.map("TCombobox", fieldbackground=[("readonly", "#d2d9d4"),("disabled", "gray") ])
-            window.columnconfigure(16, weight=1)
-            window.rowconfigure(16, weight=1)
-            tabControl = ttk.Notebook(window)
-            tabControl.grid(column=0, row=0)
-            tab1 = ttk.Frame(tabControl)
-            tab2 = ttk.Frame(tabControl)
-            tab3 = ttk.Frame(tabControl)
-            tabControl.add(tab1, text='General')
-            tabControl.add(tab2, text='PEQ')
-            tabControl.add(tab3, text='More')
-            tabControl.pack(expand = 1, fill ="both")
-
-            vol_slider = tk.Scale(tab1, from_=min(SVS_PARAMS["VOLUME"]["limits"]), to=max(SVS_PARAMS["VOLUME"]["limits"]), label = "Volume (dB)", orient=tk.HORIZONTAL, resolution=10**-int(type(SVS_PARAMS["PHASE"]["limits"][0]) == float), length=200, takefocus=1)
-            vol_slider.grid(column=4, row=3, padx = 20, pady = 15)
-            multibinder(vol_slider, update_vol)
-
-            phase_slider = tk.Scale(tab1, from_=min(SVS_PARAMS["PHASE"]["limits"]), to=max(SVS_PARAMS["PHASE"]["limits"]), label = "Phase (°)", orient=tk.HORIZONTAL, resolution=10**-int(type(SVS_PARAMS["PHASE"]["limits"][0]) == float), length=200, takefocus=1)
-            phase_slider.grid(column=4, row=5, padx = 20, pady = 15)
-            multibinder(phase_slider, update_phase)
-
-            lpfilter_slider = tk.Scale(tab1, from_=min(SVS_PARAMS["LOW_PASS_FILTER_FREQ"]["limits"]), to=max(SVS_PARAMS["LOW_PASS_FILTER_FREQ"]["limits"]), label = "Low Pass Filter Freq. (Hz)", orient=tk.HORIZONTAL, resolution=10**-int(type(SVS_PARAMS["LOW_PASS_FILTER_FREQ"]["limits"][0]) == float), length=200, takefocus=1)
-            lpfilter_slider.grid(column=4, row=7, padx = 20, pady = 15)
-            multibinder(lpfilter_slider, update_lpfilter_freq)
-            lpfilter_slope_combo=ttk.Combobox(tab1,values=[str(l) + " dB" for l in SVS_PARAMS["LOW_PASS_FILTER_SLOPE"]["limits"]],width=7,state='readonly')
-            lpfilter_slope_combo.grid(sticky="W",column=5, row=7)
-            lpfilter_slope_combo.bind("<<ComboboxSelected>>", update_lpfilter_slope)
-            lpf_var = tk.BooleanVar(value=False)
-            lpf_checkbox = ttk.Checkbutton(tab1, variable=lpf_var, command=lpf_opt_changed)
-            lpf_checkbox.place(x=325,y=218)
-
-            room_gain_slider = tk.Scale(tab1, from_=min(SVS_PARAMS["ROOM_GAIN_FREQ"]["limits"]), to=max(SVS_PARAMS["ROOM_GAIN_FREQ"]["limits"]), label = "Room Gain Freq. (Hz)", orient=tk.HORIZONTAL, resolution=10**-int(type(SVS_PARAMS["ROOM_GAIN_FREQ"]["limits"][0]) == float), length=200, takefocus=1, command=make_room_gain_freq_discrete_slider)
-            multibinder(room_gain_slider, update_room_gain_freq)
-            room_gain_slider.grid(column=4, row=9, padx = 20, pady = 15)
-            room_gain_slope_combo=ttk.Combobox(tab1,values=[str(l) + " dB" for l in SVS_PARAMS["ROOM_GAIN_SLOPE"]["limits"]],width=7,state='readonly')
-            room_gain_slope_combo.grid(sticky="W",column=5, row=9)
-            room_gain_slope_combo.bind("<<ComboboxSelected>>", update_room_gain_slope)
-            room_gain_var = tk.BooleanVar(value=True)
-            room_gain_checkbox = ttk.Checkbutton(tab1, variable=room_gain_var, command=room_gain_opt_changed)
-            room_gain_checkbox.place(x=325,y=310)
-
-            try:
-                subwoofer = Image.open(requests.get("https://raw.githubusercontent.com/logon84/pySVS/main/svs1000p.jpg", stream=True).raw)
-                subwoofer = subwoofer.resize((200, 200))
-                subwoofer = ImageTk.PhotoImage(subwoofer)
-                picframe = tk.Label(tab1, image = subwoofer)
-                picframe.grid(sticky="NW", column=5, row=0, columnspan=9, rowspan=9, padx=50)
-            except:
-                pass
-            
-            PEQ1_var = tk.IntVar(value=0)
-            PEQ1_checkbox = ttk.Checkbutton(tab2, variable=PEQ1_var, text='PEQ1', command=peq1_opt_changed)
-            PEQ1_checkbox.place(x=40,y=15)
-            PEQ1_freq_slider = tk.Scale(tab2, from_=min(SVS_PARAMS["PEQ1_FREQ"]["limits"]), to=max(SVS_PARAMS["PEQ1_FREQ"]["limits"]), label = "Freq (Hz)", orient=tk.HORIZONTAL, resolution=10**-int(type(SVS_PARAMS["PEQ1_FREQ"]["limits"][0]) == float), length=100, takefocus=1)
-            multibinder(PEQ1_freq_slider, update_peq1_freq)
-            PEQ1_freq_slider.grid(column=7, row=3, padx = 35, pady = 35)
-            PEQ1_boost_slider = tk.Scale(tab2, from_=min(SVS_PARAMS["PEQ1_BOOST"]["limits"]), to=max(SVS_PARAMS["PEQ1_BOOST"]["limits"]), label = "Boost (dB)", orient=tk.HORIZONTAL, resolution=10**-int(type(SVS_PARAMS["PEQ1_BOOST"]["limits"][0]) == float), length=100, takefocus=1)
-            multibinder(PEQ1_boost_slider, update_peq1_boost)
-            PEQ1_boost_slider.grid(column=7, row=5, padx = 20, pady = 15)
-            PEQ1_qfactor_slider = tk.Scale(tab2, from_=min(SVS_PARAMS["PEQ1_QFACTOR"]["limits"]), to=max(SVS_PARAMS["PEQ1_QFACTOR"]["limits"]), label = "Q-Factor", orient=tk.HORIZONTAL, resolution=10**-int(type(SVS_PARAMS["PEQ1_QFACTOR"]["limits"][0]) == float), length=100, takefocus=1)
-            multibinder(PEQ1_qfactor_slider, update_peq1_qfactor)
-            PEQ1_qfactor_slider.grid(column=7, row=7, padx = 20, pady = 35)
-
-            PEQ2_var = tk.IntVar(value=0)
-            PEQ2_checkbox = ttk.Checkbutton(tab2, variable=PEQ2_var, text='PEQ2', command=peq2_opt_changed)
-            PEQ2_checkbox.place(x=214,y=15)
-            PEQ2_freq_slider = tk.Scale(tab2, from_=min(SVS_PARAMS["PEQ2_FREQ"]["limits"]), to=max(SVS_PARAMS["PEQ2_FREQ"]["limits"]), label = "Freq (Hz)", orient=tk.HORIZONTAL, resolution=10**-int(type(SVS_PARAMS["PEQ2_FREQ"]["limits"][0]) == float), length=100, takefocus=1)
-            multibinder(PEQ2_freq_slider, update_peq2_freq)
-            PEQ2_freq_slider.grid(column=8, row=3, padx = 35, pady = 35)
-            PEQ2_boost_slider = tk.Scale(tab2, from_=min(SVS_PARAMS["PEQ2_BOOST"]["limits"]), to=max(SVS_PARAMS["PEQ2_BOOST"]["limits"]), label = "Boost (dB)", orient=tk.HORIZONTAL, resolution=10**-int(type(SVS_PARAMS["PEQ2_BOOST"]["limits"][0]) == float), length=100, takefocus=1)
-            multibinder(PEQ2_boost_slider, update_peq2_boost)
-            PEQ2_boost_slider.grid(column=8, row=5, padx = 20, pady = 15)
-            PEQ2_qfactor_slider = tk.Scale(tab2, from_=min(SVS_PARAMS["PEQ2_QFACTOR"]["limits"]), to=max(SVS_PARAMS["PEQ2_QFACTOR"]["limits"]), label = "Q-Factor", orient=tk.HORIZONTAL, resolution=10**-int(type(SVS_PARAMS["PEQ2_QFACTOR"]["limits"][0]) == float), length=100, takefocus=1)
-            multibinder(PEQ2_qfactor_slider, update_peq2_qfactor)
-            PEQ2_qfactor_slider.grid(column=8, row=7, padx = 20, pady = 35)
-
-            PEQ3_var = tk.IntVar(value=0)
-            PEQ3_checkbox = ttk.Checkbutton(tab2, variable=PEQ3_var, text='PEQ3', command=peq3_opt_changed)
-            PEQ3_checkbox.place(x=388,y=15)
-            PEQ3_freq_slider = tk.Scale(tab2, from_=min(SVS_PARAMS["PEQ3_FREQ"]["limits"]), to=max(SVS_PARAMS["PEQ3_FREQ"]["limits"]), label = "Freq (Hz)", orient=tk.HORIZONTAL, resolution=10**-int(type(SVS_PARAMS["PEQ3_FREQ"]["limits"][0]) == float), length=100, takefocus=1)
-            multibinder(PEQ3_freq_slider, update_peq3_freq)
-            PEQ3_freq_slider.grid(column=9, row=3, padx = 35, pady = 35)
-            PEQ3_boost_slider = tk.Scale(tab2, from_=min(SVS_PARAMS["PEQ3_BOOST"]["limits"]), to=max(SVS_PARAMS["PEQ3_BOOST"]["limits"]), label = "Boost (dB)", orient=tk.HORIZONTAL, resolution=10**-int(type(SVS_PARAMS["PEQ3_BOOST"]["limits"][0]) == float), length=100, takefocus=1)
-            multibinder(PEQ3_boost_slider, update_peq3_boost)
-            PEQ3_boost_slider.grid(column=9, row=5, padx = 20, pady = 15)
-            PEQ3_qfactor_slider = tk.Scale(tab2, from_=min(SVS_PARAMS["PEQ3_QFACTOR"]["limits"]), to=max(SVS_PARAMS["PEQ3_QFACTOR"]["limits"]), label = "Q-Factor", orient=tk.HORIZONTAL, resolution=10**-int(type(SVS_PARAMS["PEQ3_QFACTOR"]["limits"][0]) == float), length=100, takefocus=1)
-            multibinder(PEQ3_qfactor_slider, update_peq3_qfactor)
-            PEQ3_qfactor_slider.grid(column=9, row=7, padx = 20, pady = 35)
-
-            preset_label = ttk.Label(tab3, text='Presets:')
-            preset_label.grid(column=1, row=1, sticky='W', padx=25, pady=15)
-            preset_values = ["MOVIE", "MUSIC", "CUSTOM", "DEFAULT"]
-            preset_combo=ttk.Combobox(tab3,values=preset_values,width=7)
-            preset_combo.bind("<<ComboboxSelected>>", preset_combo_changed)
-            preset_combo.grid(sticky="W",column=1, row=2, padx=30, ipadx = 20)
-            preset_combo.current(3)
-            preset_rename_button = ttk.Button(tab3, text='Confirm Rename', command=rename_preset)
-            preset_rename_button.grid(column=3, row=2)
-            preset_load_button = ttk.Button(tab3, text='Load', command=load_preset)
-            preset_load_button.grid(column=4, row=2)
-            preset_save_button = ttk.Button(tab3, text='Save', command=save_preset)
-            preset_save_button.grid(column=5, row=2)
-        
-            standby_label = ttk.Label(tab3, text='Standby Mode:')
-            standby_label.grid(column=1, row=3, sticky='W', padx=25, pady=15)
-            autoon_values = ["AUTO ON","TRIGGER","ON"]
-            autoon_combo = ttk.Combobox(tab3,values=autoon_values,width=7,state='readonly')
-            autoon_combo.bind("<<ComboboxSelected>>", autoon_combo_changed)
-            autoon_combo.grid(sticky="W",column=1, row=4, padx=30, ipadx = 20)
-            autoon_combo.current(1)
-
-            polarity_var = tk.BooleanVar(value=1)
-            polarity_checkbox = ttk.Checkbutton(tab3, variable=polarity_var, command=polarity_opt_changed, text='Polarity')
-            polarity_checkbox.place(x=25,y=180)
-            
-            window.mainloop()
-
-        except Exception:
-            traceback.print_exc()
+            TX.BUFFER=built_frames
+            while len(TX.BUFFER) > 0: pass
+            time.sleep(0.5)
+            close_bt_daemon()
+    else:
+        print("Nothing to do!")
+        sys.exit(0)
 
 if __name__ == "__main__":
     sys.exit(main())
