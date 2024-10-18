@@ -1,0 +1,11 @@
+# Nix files
+.direnv/
+
+# Venv files
+.venv/
+
+# Python files
+__pycache__/
+.venv/
+*.egg-info/
+build/

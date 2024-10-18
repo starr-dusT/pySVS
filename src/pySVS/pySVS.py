@@ -103,6 +103,7 @@ SVS_PARAMS = {
 
 ###################    Bleak Routines    ###################
 
+VERSION = "v3.52 Final"
 RUN_THREAD = True
 PARTIAL_FRAME=b''
 sync = True
@@ -630,9 +631,10 @@ def multibinder(widget, function):
 def string_isalnumify(in_string):
     return ''.join([char for char in in_string.upper() if char.isalnum()])
 
-if __name__ == "__main__":
-    VERSION = "v3.52 Final"
+def main():
+    global dev
     dev="hci0"
+    global GUI
     if len(sys.argv[1:]) > 0:
         GUI = 0
         built_frames = []
@@ -745,6 +747,7 @@ if __name__ == "__main__":
         GUI = 1
         try:
             start_bt_daemon()
+            global window
             window = tk.Tk()
             window.protocol("WM_DELETE_WINDOW", close_bt_daemon)
             window.title("pySVS " + VERSION + " - SVS Subwoofer Control")
@@ -872,4 +875,6 @@ if __name__ == "__main__":
         except Exception:
             traceback.print_exc()
 
+if __name__ == "__main__":
+    sys.exit(main())
 ###################    End main()    ###################

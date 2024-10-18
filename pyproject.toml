@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pySVS"
+version = "0.0.1"
+authors = [
+  {name = "logon84", email= "logon84@users.noreply.github.com"},
+  {name = "Tyler Starr", email= "starrtyler88@gmail.com"}
+]
+description = "Python script to control bluetooth SVS subwoofer. Forked from pySVS by logon84."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent"
+]
+dependencies = [
+]
+
+[project.urls]
+"Homepage" = "https://github.com/starr-dusT/pySVS"
+"Repository" = "https://github.com/starr-dusT/pySVS"
+
+[project.scripts]
+z = "pySVS.pySVS:main"
